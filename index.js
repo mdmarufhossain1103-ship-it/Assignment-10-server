@@ -144,7 +144,6 @@ async function run() {
         app.patch('/user/:id', async(req,res) =>{
             const {id} = req.params;
             const {name,email} = req.body;
-            console.log(name,email,id)
 
             const result = await userCollection.updateOne({
                 _id: new ObjectId(id)
@@ -156,11 +155,24 @@ async function run() {
                 }
             }
         )
-        console.log(result)
-
         res.send(result);
         })
 
+
+        //artist information
+
+        //add data
+        app.post('/artist/arts', async (req, res) => {
+            const data = req.body
+            const result = await artCollection.insertOne({ ...data, createdAt: new Date() })
+            res.send(result)
+        })
+
+        //show add data
+        app.get('/artist/artworks', async (req, res) => {
+            const result = await artCollection.find().toArray();
+            res.send(result);
+        })
 
 
         await client.db("admin").command({ ping: 1 });
