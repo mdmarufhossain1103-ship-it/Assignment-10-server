@@ -140,6 +140,27 @@ async function run() {
             res.send(result);
         })
 
+        //user update profile
+        app.patch('/user/:id', async(req,res) =>{
+            const {id} = req.params;
+            const {name,email} = req.body;
+            console.log(name,email,id)
+
+            const result = await userCollection.updateOne({
+                _id: new ObjectId(id)
+            },
+            {
+                $set: {
+                    name,
+                    email,
+                }
+            }
+        )
+        console.log(result)
+
+        res.send(result);
+        })
+
 
 
         await client.db("admin").command({ ping: 1 });
