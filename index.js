@@ -325,6 +325,23 @@ async function run() {
             res.send(result);
         });
 
+        //Analytics
+        app.get('/admin/analytics', async(req,res) =>{
+            const users = await userCollection.find().toArray();
+            const payments = await paymentCollection.find().toArray();
+            const artist = await artCollection.find().toArray();
+
+            const totalUsers = users.length;
+
+            const totalArtist = users.filter((a) => a.role === 'artist').length;
+
+            const totalWorkSold = payments.length;
+            const totalRevenue = payments.reduce((sum,p) => sum + Number(p.price),0);
+
+            res.send({totalUsers,totalArtist,totalWorkSold,totalRevenue})
+
+        })
+
         // =======================
         // HEALTH CHECK
         // =======================
