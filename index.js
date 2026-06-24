@@ -228,7 +228,6 @@ async function run() {
                 const result = await artCollection.insertOne({
                     ...data,
                     createdAt: new Date(),
-                    userId: req.user.email,
                 });
 
                 res.send(result);
@@ -252,10 +251,9 @@ async function run() {
             "/artist/artworks/:id",
             async (req, res) => {
                 const { id } = req.params;
-
+                console.log(id);
                 const result = await artCollection.deleteOne({
                     _id: new ObjectId(id),
-                    userId: req.user.email,
                 });
 
                 res.send(result);
@@ -269,7 +267,7 @@ async function run() {
                 const { title, price } = req.body;
 
                 const result = await artCollection.updateOne(
-                    { _id: new ObjectId(id), userId: req.user.email },
+                    { _id: new ObjectId(id) },
                     {
                         $set: {
                             title,
@@ -281,6 +279,30 @@ async function run() {
                 res.send(result);
             }
         );
+
+        //admin
+
+        //user
+        app.get('/users', async(req,res) =>{
+            const result = await userCollection.find().toArray();
+            res.send(result);
+        })
+
+        //role change
+        app.patch('/user/role/:id', async(req,res) => {
+          const {id} = req.params;
+          const {role} = req.body;
+          const result = await userCollection.updateOne(
+            {_id: new ObjectId(id)},
+            {
+                $set:{
+                    role,
+                }
+            }
+          )
+          
+          res.send(result);
+        })
 
         // =======================
         // HEALTH CHECK
