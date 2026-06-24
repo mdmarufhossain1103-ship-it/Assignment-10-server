@@ -76,7 +76,7 @@ async function run() {
 
         //art
         app.get('/artworks', async(req,res) =>{
-            const result = await artCollection.find().toArray();
+            const result = await artCollection.find().sort({createdAt: -1}).toArray();
             res.send(result);
         })
 
@@ -170,7 +170,38 @@ async function run() {
 
         //show add data
         app.get('/artist/artworks', async (req, res) => {
-            const result = await artCollection.find().toArray();
+            const result = await artCollection.find().sort({createdAt: -1}).toArray();
+            res.send(result);
+        })
+
+        //DELETE
+        app.delete('/artist/artworks/:id', async(req,res) =>{
+            const {id} = req.params;
+            const result = await artCollection.deleteOne({
+                _id: new ObjectId(id),
+            })
+
+            res.send(result);
+        })
+
+        //UPDATE
+
+        app.patch('/artist/artworks/:id', async(req,res) =>{
+            const {id} = req.params;
+            const {title,price} = req.body;
+
+            const result = await artCollection.updateOne(
+                {
+                    _id: new ObjectId(id)
+                },
+                {
+                    $set: {
+                        title,
+                        price,
+                    }
+                }
+            )
+
             res.send(result);
         })
 
