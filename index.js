@@ -160,6 +160,7 @@ async function run() {
                 userID,
                 userName,
                 userEmail,
+                paymentType,
                 title,
                 price,
                 artist,
@@ -181,6 +182,7 @@ async function run() {
                 userID,
                 userName,
                 userEmail,
+                paymentType,
                 title,
                 price,
                 artist,
@@ -316,6 +318,12 @@ async function run() {
                 res.send(result);
             }
         );
+
+        //all payment
+        app.get("/admin/payment", async (req, res) => {
+            const result = await paymentCollection.find().toArray();
+            res.send(result);
+        });
 
         // =======================
         // HEALTH CHECK
