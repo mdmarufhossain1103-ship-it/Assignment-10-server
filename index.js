@@ -1,24 +1,27 @@
-const dns = require('node:dns');
-dns.setServers(['1.1.1.1', '1.0.0.1']);
+const dns = require("node:dns");
+dns.setServers(["1.1.1.1", "1.0.0.1"]);
 
 const express = require("express");
-const dontenv = require("dotenv");
+const dotenv = require("dotenv");
 const cors = require("cors");
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
-const { createRemoteJWKSet, jwtVerify } = require('jose-cjs');
-dontenv.config();
+const { createRemoteJWKSet, jwtVerify } = require("jose-cjs");
 
-const uri = process.env.MONGODB_URI;
+dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT;
 
+const uri = process.env.MONGODB_URI;
+const CLIENT_URL = process.env.CLIENT_URL;
+
 app.use(
     cors({
         credentials: true,
-        origin: [process.env.CLIENT_URL],
-    }),
+        origin: [CLIENT_URL],
+    })
 );
+
 app.use(express.json());
 
 const client = new MongoClient(uri, {
@@ -29,192 +32,266 @@ const client = new MongoClient(uri, {
     },
 });
 
-const JWKS = createRemoteJWKSet(new URL(`${process.env.CLIENT_URL}/api/auth/jwks`))
+// JWKS
+const JWKS = createRemoteJWKSet(
+    new URL(`${CLIENT_URL}/api/auth/jwks`)
+);
 
+// =======================
+// AUTH MIDDLEWARE
+// =======================
 const verifyToken = async (req, res, next) => {
     const authHeader = req.headers.authorization;
 
-    if (!authHeader || !authHeader.startsWith("Bearer")) {
-        return res.status(401).json({ msg: "unathorized" })
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        return res.status(401).json({ msg: "unauthorized" });
     }
 
-    const token = authHeader.split(" ")[1]
+    const token = authHeader.split(" ")[1];
 
     if (!token) {
-        return res.status(401).json({ msg: "unathorized" })
+        return res.status(401).json({ msg: "unauthorized" });
     }
 
     try {
-
-        const { payload } = await jwtVerify(token, JWKS)
-        req.user = payload
+        const { payload } = await jwtVerify(token, JWKS);
+        req.user = payload;
         next();
-
     } catch (error) {
-        console.log(error)
-        return res.status(401).json({ msg: "unathorized" })
+        console.log(error);
+        return res.status(401).json({ msg: "unauthorized" });
     }
-}
+};
 
-const varifySeller = async (req, res, next) => {
-    const user = req.user;
-    if (user.role !== 'seller' || user.plan !== 'pro') {
-        return res.status(403).json({ msg: "forbidden" })
+// =======================
+// SELLER CHECK (FIXED)
+// =======================
+const verifySeller = async (req, res, next) => {
+    try {
+        const user = await userCollection.findOne({
+            email: req.user.email,
+        });
+
+        if (!user || user.role !== "seller" || user.plan !== "pro") {
+            return res.status(403).json({ msg: "forbidden" });
+        }
+
+        req.dbUser = user;
+        next();
+    } catch (err) {
+        return res.status(500).json({ msg: "server error" });
     }
-    next();
-}
+};
 
+// =======================
+// DATABASE
+// =======================
 async function run() {
     try {
         await client.connect();
+
         const db = client.db("ArtHub");
-        const artCollection = db.collection('arts')
-        const subcriptionCollection = db.collection('subcriptions')
-        const userCollection = db.collection('user')
-        const paymentCollection = db.collection('payments')
 
+        const artCollection = db.collection("arts");
+        const subcriptionCollection = db.collection("subcriptions");
+        const userCollection = db.collection("user");
+        const paymentCollection = db.collection("payments");
 
-        //art
-        app.get('/artworks', async(req,res) =>{
-            const result = await artCollection.find().sort({createdAt: -1}).toArray();
+        // make accessible in middleware
+        global.userCollection = userCollection;
+
+        // =======================
+        // ARTWORKS (PUBLIC)
+        // =======================
+        app.get("/artworks", async (req, res) => {
+            const result = await artCollection
+                .find()
+                .sort({ createdAt: -1 })
+                .toArray();
+
             res.send(result);
-        })
+        });
 
-        app.get('/artworks/:id', async(req,res) =>{
-            const {id} = req.params;
-            const result = await artCollection.findOne({_id: new ObjectId(id)})
-            res.send(result)
-        })
+        app.get("/artworks/:id", async (req, res) => {
+            const { id } = req.params;
 
-        //Subcription
-        app.post('/subcription', async (req, res) => {
-            const { sessionId, priceID, userID } = req.body
+            const result = await artCollection.findOne({
+                _id: new ObjectId(id),
+            });
 
-            const isExit = await subcriptionCollection.findOne({ sessionId })
+            res.send(result);
+        });
 
-            if (isExit) {
-                return res.json({ msg: "Already exist!" })
+        // =======================
+        // SUBSCRIPTION
+        // =======================
+        app.post("/subcription", async (req, res) => {
+            const { sessionId, priceID, userID } = req.body;
+
+            const isExist = await subcriptionCollection.findOne({
+                sessionId,
+            });
+
+            if (isExist) {
+                return res.json({ msg: "Already exist!" });
             }
+
             await subcriptionCollection.insertOne({
                 sessionId,
                 priceID,
-                userID
-            })
+                userID,
+            });
 
             await userCollection.updateOne(
                 { _id: new ObjectId(userID) },
-                { $set: { plan: "pro" } },
-            )
+                { $set: { plan: "pro" } }
+            );
 
-            return res.json({ msg: "payment successful!" })
-        })
+            return res.json({ msg: "payment successful!" });
+        });
 
-        //payment
+        // =======================
+        // PAYMENT
+        // =======================
+        app.post("/payment", async (req, res) => {
+            const {
+                sessionId,
+                productId,
+                userID,
+                userName,
+                userEmail,
+                title,
+                price,
+                artist,
+                image,
+                purchaseDate,
+            } = req.body;
 
-        app.post('/payment', async (req, res) => {
-            const { sessionId, productId, userID, title, price, artist, image, purchaseDate } = req.body
-            console.log(image)
+            const isExist = await paymentCollection.findOne({
+                sessionId,
+            });
 
-            const isExit = await paymentCollection.findOne({ sessionId })
-
-            if (isExit) {
-                return res.json({ msg: "Already exist!" })
+            if (isExist) {
+                return res.json({ msg: "Already exist!" });
             }
+
             await paymentCollection.insertOne({
                 sessionId,
                 productId,
                 userID,
-                title,       
-                price, 
+                userName,
+                userEmail,
+                title,
+                price,
                 artist,
                 image,
-                purchaseDate
+                purchaseDate,
             });
 
-            return res.json({ msg: "payment successful!" })
-        })
+            return res.json({ msg: "payment successful!" });
+        });
 
-        //show payment
-        app.get('/payment', async(req,res) =>{
+        app.get("/payment", async (req, res) => {
             const result = await paymentCollection.find().toArray();
             res.send(result);
-        })
+        });
 
-        //user update profile
-        app.patch('/user/:id', async(req,res) =>{
-            const {id} = req.params;
-            const {name,email} = req.body;
+        // =======================
+        // USER PROFILE UPDATE
+        // =======================
+        app.patch("/user/:id", async (req, res) => {
+            const { id } = req.params;
+            const { name, email } = req.body;
 
-            const result = await userCollection.updateOne({
-                _id: new ObjectId(id)
-            },
-            {
-                $set: {
-                    name,
-                    email,
-                }
-            }
-        )
-        res.send(result);
-        })
-
-
-        //artist information
-
-        //add data
-        app.post('/artist/arts', async (req, res) => {
-            const data = req.body
-            const result = await artCollection.insertOne({ ...data, createdAt: new Date() })
-            res.send(result)
-        })
-
-        //show add data
-        app.get('/artist/artworks', async (req, res) => {
-            const result = await artCollection.find().sort({createdAt: -1}).toArray();
-            res.send(result);
-        })
-
-        //DELETE
-        app.delete('/artist/artworks/:id', async(req,res) =>{
-            const {id} = req.params;
-            const result = await artCollection.deleteOne({
-                _id: new ObjectId(id),
-            })
-
-            res.send(result);
-        })
-
-        //UPDATE
-
-        app.patch('/artist/artworks/:id', async(req,res) =>{
-            const {id} = req.params;
-            const {title,price} = req.body;
-
-            const result = await artCollection.updateOne(
-                {
-                    _id: new ObjectId(id)
-                },
+            const result = await userCollection.updateOne(
+                { _id: new ObjectId(id) },
                 {
                     $set: {
-                        title,
-                        price,
-                    }
+                        name,
+                        email,
+                    },
                 }
-            )
+            );
 
             res.send(result);
-        })
+        });
 
+        // =======================
+        // ARTIST ROUTES (FIXED)
+        // =======================
 
-        await client.db("admin").command({ ping: 1 });
-        console.log(
-            "Pinged your deployment. You successfully connected to MongoDB!",
+        app.post(
+            "/artist/arts",
+            async (req, res) => {
+                const data = req.body;
+
+                const result = await artCollection.insertOne({
+                    ...data,
+                    createdAt: new Date(),
+                    userId: req.user.email,
+                });
+
+                res.send(result);
+            }
         );
+
+        app.get(
+            "/artist/artworks",
+            async (req, res) => {
+                const result = await artCollection
+                    .find()
+                    .sort({ createdAt: -1 })
+                    .toArray();
+
+
+                res.send(result);
+            }
+        );
+
+        app.delete(
+            "/artist/artworks/:id",
+            async (req, res) => {
+                const { id } = req.params;
+
+                const result = await artCollection.deleteOne({
+                    _id: new ObjectId(id),
+                    userId: req.user.email,
+                });
+
+                res.send(result);
+            }
+        );
+
+        app.patch(
+            "/artist/artworks/:id",
+            async (req, res) => {
+                const { id } = req.params;
+                const { title, price } = req.body;
+
+                const result = await artCollection.updateOne(
+                    { _id: new ObjectId(id), userId: req.user.email },
+                    {
+                        $set: {
+                            title,
+                            price,
+                        },
+                    }
+                );
+
+                res.send(result);
+            }
+        );
+
+        // =======================
+        // HEALTH CHECK
+        // =======================
+        await client.db("admin").command({ ping: 1 });
+        console.log("MongoDB connected successfully!");
     } finally {
-        // Ensures that the client will close when you finish/error
-        // await client.close();
+        // keep connection alive
     }
 }
+
 run().catch(console.dir);
 
 app.get("/", (req, res) => {
