@@ -251,7 +251,6 @@ async function run() {
             "/artist/artworks/:id",
             async (req, res) => {
                 const { id } = req.params;
-                console.log(id);
                 const result = await artCollection.deleteOne({
                     _id: new ObjectId(id),
                 });
@@ -303,6 +302,20 @@ async function run() {
           
           res.send(result);
         })
+
+        //all artwork
+        app.get(
+            "/all/artworks",
+            async (req, res) => {
+                const result = await artCollection
+                    .find()
+                    .sort({ createdAt: -1 })
+                    .toArray();
+
+
+                res.send(result);
+            }
+        );
 
         // =======================
         // HEALTH CHECK
