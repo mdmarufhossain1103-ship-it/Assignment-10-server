@@ -127,7 +127,14 @@ async function run() {
         // SUBSCRIPTION
         // =======================
         app.post("/subcription", async (req, res) => {
-            const { sessionId, priceID, userID } = req.body;
+            const { sessionId,
+                priceID,
+                userID,
+                userName,
+                userEmail,
+                price,
+                plan,
+                purchaseDate, } = req.body;
 
             const isExist = await subcriptionCollection.findOne({
                 sessionId,
@@ -141,14 +148,97 @@ async function run() {
                 sessionId,
                 priceID,
                 userID,
+                userName,
+                userEmail,
+                price,
+                plan,
+                purchaseDate,
             });
+
+            await paymentCollection.insertOne({
+                sessionId,
+                priceID,
+                userID,
+                userName,
+                userEmail,
+                price,
+                plan,
+                purchaseDate: new Date(),
+            })
 
             await userCollection.updateOne(
                 { _id: new ObjectId(userID) },
-                { $set: { plan: "pro" } }
+                { $set: { plan } }
             );
 
             return res.json({ msg: "payment successful!" });
+        });
+
+
+        //search data
+
+
+        app.get('/arts', async (req, res) => {
+            try {
+                const { email, search, minPrice,maxPrice,sort, page=1,limit=8} = req.query;
+
+                let query = {};
+
+                const skip = (Number(page) - 1) * Number(limit);
+
+                if (email) {
+                    query.email = email;
+                }
+
+                if (search) {
+                    query.$or = [
+                        {
+                            title: {
+                                $regex: search,
+                                $options: "i"
+                            }
+                        },
+                        {
+                            artist: {
+                                $regex: search,
+                                $options: "i"
+                            }
+                        }
+                    ];
+                }
+
+
+                if (minPrice || maxPrice) {
+                    query.price = {};
+
+                    if (minPrice) {
+                        query.price.$gte = Number(minPrice);
+                    }
+
+                    if (maxPrice) {
+                        query.price.$lte = Number(maxPrice);
+                    }
+                }
+
+                let sortOption = { createdAt: -1 };
+
+                if (sort === "priceLowHigh") {
+                    sortOption = { price: 1 };
+                }
+
+                if (sort === "priceHighLow") {
+                    sortOption = { price: -1 };
+                }
+
+                const result = await artCollection.find(query).skip(skip).limit(Number(limit)).sort(sortOption).toArray();
+                const totalData = await artCollection.countDocuments(query)
+                const totalPage = Math.ceil(totalData / Number(limit))
+                res.send({ data: result, page: Number(page), totalPage });
+            } catch (error) {
+                res.status(500).send({
+                    error: error.message
+                });
+            }
         });
 
         // =======================
