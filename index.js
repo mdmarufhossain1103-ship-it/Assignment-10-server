@@ -96,6 +96,7 @@ async function run() {
         const subcriptionCollection = db.collection("subcriptions");
         const userCollection = db.collection("user");
         const paymentCollection = db.collection("payments");
+        const commentCollection = db.collection('comments');
 
         // make accessible in middleware
         global.userCollection = userCollection;
@@ -217,6 +218,143 @@ async function run() {
 
             res.send(result);
         });
+
+        //user comment section
+
+        app.get('/comments/:ideaId', async (req, res) => {
+            try {
+
+                const ideaId = req.params.ideaId;
+
+                const comments = await commentCollection
+                    .find({ ideaId })
+                    .sort({ createdAt: -1 })
+                    .toArray();
+
+                res.send(comments);
+
+            } catch (error) {
+                res.status(500).send({
+                    error: error.message
+                });
+            }
+        });
+
+        app.get('/comments', async (req, res) => {
+            try {
+                const email = req.query.email;
+
+                if (!email) {
+                    return res.status(400).send({
+                        error: 'Email is required'
+                    });
+                }
+                const comments = await commentCollection.find({ email: email }).sort({ createdAt: -1 }).toArray();
+                res.send(comments);
+            }
+            catch (error) {
+                res.status(500).send({
+                    error: error.message
+                });
+            }
+        })
+
+        app.post('/comments', async (req, res) => {
+            try {
+
+                const { ideaId, userName, text, email } = req.body;
+
+                if (!ideaId || !userName || !text || !email) {
+                    return res.status(400).send({
+                        error: 'Missing required fields'
+                    });
+                }
+
+                const newComment = {
+                    ideaId,
+                    userName,
+                    text,
+                    email,
+                    createdAt: new Date(),
+                    isEdited: false
+                };
+
+                const result = await commentCollection.insertOne(newComment);
+
+                res.status(201).send({
+                    _id: result.insertedId,
+                    ...newComment
+                });
+
+            } catch (error) {
+                res.status(500).send({
+                    error: error.message
+                });
+            }
+        });
+
+        app.patch('/comments/:id', async (req, res) => {
+            try {
+
+                const id = req.params.id;
+                const { text } = req.body;
+
+                if (!ObjectId.isValid(id)) {
+                    return res.status(400).send({
+                        error: 'Invalid ID'
+                    });
+                }
+
+                const filter = {
+                    _id: new ObjectId(id)
+                };
+
+                const updatedDoc = {
+                    $set: {
+                        text,
+                        isEdited: true,
+                        updatedAt: new Date()
+                    }
+                };
+
+                const result = await commentCollection.updateOne(
+                    filter,
+                    updatedDoc
+                );
+
+                res.send(result);
+
+            } catch (error) {
+                res.status(500).send({
+                    error: error.message
+                });
+            }
+        });
+
+        app.delete('/comments/:id', async (req, res) => {
+            try {
+
+                const id = req.params.id;
+
+                if (!ObjectId.isValid(id)) {
+                    return res.status(400).send({
+                        error: 'Invalid ID'
+                    });
+                }
+
+                const result = await commentCollection.deleteOne({
+                    _id: new ObjectId(id)
+                });
+
+                res.send(result);
+
+            } catch (error) {
+                res.status(500).send({
+                    error: error.message
+                });
+            }
+        });
+
 
         // =======================
         // ARTIST ROUTES (FIXED)
