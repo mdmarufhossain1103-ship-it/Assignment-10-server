@@ -531,9 +531,38 @@ async function run() {
         // =======================
 
         app.get("/api/payment", verifyToken, async (req, res) => {
-            console.log(req.user.id)
             const result = await paymentCollection.find({artistId: req.user.id }).sort({ createdAt: -1 }).toArray();
             res.send(result);
+        });
+
+        app.get("/top-artist/payment", async (req, res) => {
+            const topArtists = await paymentCollection.aggregate([
+                {
+                    $group: {
+                        _id: "$artistId", 
+                        name: { $first: "$artist" },
+                        avatar: { $first: "$image" },
+                        sales: { $sum: 1 }
+                    }
+                },
+                {
+                    $sort: { sales: -1 }
+                },
+                {
+                    $limit: 3
+                },
+                {
+                    $project: {
+                        _id: 0,
+                        id: "$_id",
+                        name: 1,
+                        avatar: 1,
+                        sales: 1
+                    }
+                }
+            ]).toArray();
+
+            res.status(200).send(topArtists);
         });
 
         app.post(
