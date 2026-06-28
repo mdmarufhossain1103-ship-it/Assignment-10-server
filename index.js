@@ -32,6 +32,8 @@ const client = new MongoClient(uri, {
     },
 });
 
+
+
 // JWKS
 const JWKS = createRemoteJWKSet(
     new URL(`${CLIENT_URL}/api/auth/jwks`)
@@ -64,15 +66,56 @@ const verifyToken = async (req, res, next) => {
 };
 
 // =======================
-// SELLER CHECK (FIXED)
+//User CHECK (FIXED)
 // =======================
-const verifySeller = async (req, res, next) => {
+const verifyUser = async (req, res, next) => {
     try {
         const user = await userCollection.findOne({
             email: req.user.email,
         });
 
-        if (!user || user.role !== "seller" || user.plan !== "pro") {
+        if (!user || user.role === "artist" || user.role === "admin") {
+            return res.status(403).json({ msg: "forbidden" });
+        }
+
+        req.dbUser = user;
+        next();
+    } catch (err) {
+        return res.status(500).json({ msg: "server error" });
+    }
+};
+
+// =======================
+// Artist CHECK (FIXED)
+// =======================
+const verifyArtist = async (req, res, next) => {
+    try {
+        const user = await userCollection.findOne({
+            email: req.user.email,
+        });
+
+        if (!user || user.role === "user" || user.role === "admin") {
+            return res.status(403).json({ msg: "forbidden" });
+        }
+
+        req.dbUser = user;
+        next();
+    } catch (err) {
+        return res.status(500).json({ msg: "server error" });
+    }
+};
+
+
+// =======================
+// Admin CHECK (FIXED)
+// =======================
+const verifyAdmin = async (req, res, next) => {
+    try {
+        const user = await userCollection.findOne({
+            email: req.user.email,
+        });
+
+        if (!user || user.role === "user" || user.role === "artist") {
             return res.status(403).json({ msg: "forbidden" });
         }
 
@@ -101,6 +144,13 @@ async function run() {
         // make accessible in middleware
         global.userCollection = userCollection;
 
+        // //plan limits map
+        // const PLAN_LIMITS = {
+        //     free: 3,
+        //     pro: 9,
+        //     premium: Infinity,
+        // }
+
         // =======================
         // ARTWORKS (PUBLIC)
         // =======================
@@ -126,7 +176,7 @@ async function run() {
         // =======================
         // SUBSCRIPTION
         // =======================
-        app.post("/subcription", async (req, res) => {
+        app.post("/subcription", verifyToken, verifyUser, async (req, res) => {
             const { sessionId,
                 priceID,
                 userID,
@@ -244,7 +294,7 @@ async function run() {
         // =======================
         // PAYMENT
         // =======================
-        app.post("/payment", async (req, res) => {
+        app.post("/payment",verifyToken, async (req, res) => {
             const {
                 sessionId,
                 productId,
@@ -255,9 +305,37 @@ async function run() {
                 title,
                 price,
                 artist,
+                artistId,
                 image,
                 purchaseDate,
             } = req.body;
+
+
+        //     const user = await userCollection.findOne({ email: req.user.email});
+        //     // console.log('user Details',user)
+            
+        //     if(!user){
+        //         return res.status(404).json({message: "User not found"})
+        //     }
+
+        //     const purchaseCount = await paymentCollection.countDocuments({
+        //         userEmail: user.email,
+        //         paymentType: "purchase",
+        //     })
+
+        //     console.log('count', purchaseCount);
+
+        //    const userPlan = user.plan;
+        //    const limit = PLAN_LIMITS[userPlan];
+
+        //    if(purchaseCount >= limit){
+        //     return res.status(403).json({
+        //         message: `Purchase limit reached for your ${userPlan} plan. Please upgrade to buy more artworks.`,
+        //         currentPlan: userPlan,
+        //         limit,
+        //         purchaseCount,
+        //     })
+        //    }
 
             const isExist = await paymentCollection.findOne({
                 sessionId,
@@ -277,6 +355,7 @@ async function run() {
                 title,
                 price,
                 artist,
+                artistId,
                 image,
                 purchaseDate,
             });
@@ -284,15 +363,16 @@ async function run() {
             return res.json({ msg: "payment successful!" });
         });
 
-        app.get("/payment", async (req, res) => {
-            const result = await paymentCollection.find().toArray();
+
+        app.get("/payment", verifyToken, async (req, res) => {
+            const result = await paymentCollection.find({ userID: req.user.id}).sort({createdAt: -1}).toArray();
             res.send(result);
         });
 
         // =======================
         // USER PROFILE UPDATE
         // =======================
-        app.patch("/user/:id", async (req, res) => {
+        app.patch("/user/:id", verifyToken,  async (req, res) => {
             const { id } = req.params;
             const { name, email } = req.body;
 
@@ -450,8 +530,14 @@ async function run() {
         // ARTIST ROUTES (FIXED)
         // =======================
 
+        app.get("/api/payment", verifyToken, async (req, res) => {
+            console.log(req.user.id)
+            const result = await paymentCollection.find({artistId: req.user.id }).sort({ createdAt: -1 }).toArray();
+            res.send(result);
+        });
+
         app.post(
-            "/artist/arts",
+            "/artist/arts", verifyToken, verifyArtist,
             async (req, res) => {
                 const data = req.body;
 
@@ -461,36 +547,30 @@ async function run() {
                 });
 
                 res.send(result);
+                
             }
         );
 
-        app.get(
-            "/artist/artworks",
-            async (req, res) => {
-                const result = await artCollection
-                    .find()
-                    .sort({ createdAt: -1 })
-                    .toArray();
-
-
-                res.send(result);
-            }
-        );
+        app.get("/artist/artworks", verifyToken, verifyArtist, async (req, res) => {
+            const result = await artCollection.find({ userID: req.user.id }).sort({ createdAt: -1 }).toArray();
+            res.send(result);
+         });
 
         app.delete(
-            "/artist/artworks/:id",
+            "/artist/artworks/:id", verifyToken,
             async (req, res) => {
                 const { id } = req.params;
                 const result = await artCollection.deleteOne({
                     _id: new ObjectId(id),
                 });
+                console.log('delete',result)
 
                 res.send(result);
             }
         );
 
         app.patch(
-            "/artist/artworks/:id",
+            "/artist/artworks/:id", verifyToken, verifyArtist,
             async (req, res) => {
                 const { id } = req.params;
                 const { title, price } = req.body;
@@ -512,13 +592,13 @@ async function run() {
         //admin
 
         //user
-        app.get('/users', async(req,res) =>{
+        app.get('/users',verifyToken,verifyAdmin, async(req,res) =>{
             const result = await userCollection.find().toArray();
             res.send(result);
         })
 
         //role change
-        app.patch('/user/role/:id', async(req,res) => {
+        app.patch('/user/role/:id', verifyToken, verifyAdmin, async(req,res) => {
           const {id} = req.params;
           const {role} = req.body;
           const result = await userCollection.updateOne(
@@ -535,7 +615,7 @@ async function run() {
 
         //all artwork
         app.get(
-            "/all/artworks",
+            "/all/artworks", verifyToken, verifyAdmin,
             async (req, res) => {
                 const result = await artCollection
                     .find()
@@ -548,7 +628,7 @@ async function run() {
         );
 
         //all payment
-        app.get("/admin/payment", async (req, res) => {
+        app.get("/admin/payment", verifyToken, verifyAdmin, async (req, res) => {
             const result = await paymentCollection.find().toArray();
             res.send(result);
         });
@@ -569,6 +649,12 @@ async function run() {
             res.send({totalUsers,totalArtist,totalWorkSold,totalRevenue})
 
         })
+
+
+        app.get('/admin/arts', verifyToken, verifyAdmin, async(req,res) =>{
+        const result = await artCollection.find().toArray()
+        res.send(result)
+       })
 
         // =======================
         // HEALTH CHECK
