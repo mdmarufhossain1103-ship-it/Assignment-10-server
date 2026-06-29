@@ -221,7 +221,7 @@ async function run() {
                 { $set: { plan } }
             );
 
-            return res.json({ msg: "payment successful!" });
+            return res.json({ msg: "payment successful!",plan });
         });
 
 
