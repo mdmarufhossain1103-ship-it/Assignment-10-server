@@ -581,7 +581,7 @@ async function run() {
         );
 
         app.get("/artist/artworks", verifyToken, verifyArtist, async (req, res) => {
-            const result = await artCollection.find({ userID: req.user.id }).sort({ createdAt: -1 }).toArray();
+            const result = await artCollection.find({artistId: req.user.id }).sort({ createdAt: -1 }).toArray();
             res.send(result);
          });
 
@@ -592,7 +592,6 @@ async function run() {
                 const result = await artCollection.deleteOne({
                     _id: new ObjectId(id),
                 });
-                console.log('delete',result)
 
                 res.send(result);
             }
