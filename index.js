@@ -182,6 +182,7 @@ async function run() {
                 userID,
                 userName,
                 userEmail,
+                paymentType,
                 price,
                 plan,
                 purchaseDate, } = req.body;
@@ -200,6 +201,7 @@ async function run() {
                 userID,
                 userName,
                 userEmail,
+                paymentType,
                 price,
                 plan,
                 purchaseDate,
@@ -211,6 +213,7 @@ async function run() {
                 userID,
                 userName,
                 userEmail,
+                paymentType,
                 price,
                 plan,
                 purchaseDate: new Date(),
